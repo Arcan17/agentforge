@@ -1,0 +1,42 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    app_name: str = "AgentForge"
+    log_level: str = "INFO"
+
+    # Database
+    database_url: str = "postgresql+asyncpg://agentforge:agentforge@localhost:5432/agentforge"
+
+    # LLM
+    llm_provider: str = "anthropic"  # "anthropic" | "openai"
+    anthropic_api_key: str = ""
+    openai_api_key: str = ""
+
+    # Agent tuning
+    max_revisions: int = 3
+    critic_approval_threshold: float = 0.75
+    max_research_results: int = 5
+    request_timeout_seconds: int = 30
+
+    # Auth
+    api_key: str = ""
+
+    @property
+    def auth_enabled(self) -> bool:
+        return bool(self.api_key)
+
+    # Human-in-the-loop default
+    human_in_loop: bool = False
+
+    # Optional Tavily key (falls back to DuckDuckGo if empty)
+    tavily_api_key: str = ""
+
+    @property
+    def use_tavily(self) -> bool:
+        return bool(self.tavily_api_key)
+
+
+settings = Settings()
