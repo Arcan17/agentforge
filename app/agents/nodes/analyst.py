@@ -44,7 +44,10 @@ Please address every point in the feedback explicitly.
     wait=wait_exponential(multiplier=1, min=1, max=8),
     reraise=True,
 )
-def _call_llm(task: str, research_data: str, feedback: str, revision: int) -> tuple[str, int]:
+def _call_llm(
+    task: str, research_data: str, feedback: str, revision: int
+) -> tuple[str, int, int, int]:
+    """Returns (analysis, total_tokens, prompt_tokens, completion_tokens)."""
     llm = get_llm(temperature=0.3)
     tools = [calculator, file_reader]
     llm_with_tools = llm.bind_tools(tools)
@@ -64,13 +67,18 @@ def _call_llm(task: str, research_data: str, feedback: str, revision: int) -> tu
     ]
 
     tool_map = {t.name: t for t in tools}
-    total_tokens = 0
+    total_tokens = prompt_tokens = completion_tokens = 0
 
     for _ in range(4):  # max tool calls
         response = llm_with_tools.invoke(messages)
         messages.append(response)
         usage = getattr(response, "usage_metadata", None) or {}
-        total_tokens += usage.get("total_tokens", 0) if isinstance(usage, dict) else 0
+        if isinstance(usage, dict):
+            p = usage.get("input_tokens", 0)
+            c = usage.get("output_tokens", 0)
+            prompt_tokens += p
+            completion_tokens += c
+            total_tokens += usage.get("total_tokens", p + c)
 
         if not getattr(response, "tool_calls", None):
             break
@@ -84,7 +92,7 @@ def _call_llm(task: str, research_data: str, feedback: str, revision: int) -> tu
                 messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"]))
 
     analysis = str(messages[-1].content) if messages else "Analysis unavailable."
-    return analysis, total_tokens
+    return analysis, total_tokens, prompt_tokens, completion_tokens
 
 
 def _format_research(research_results: list[dict]) -> str:
@@ -118,7 +126,7 @@ def analyst_node(state: AgentState) -> dict:
     revision = state.get("revision_count", 0)
 
     try:
-        analysis, tokens = _call_llm(
+        analysis, tokens, prompt_tok, completion_tok = _call_llm(
             state["original_task"], research_data, feedback, revision
         )
         duration_ms = int((time.monotonic() - t0) * 1000)
@@ -133,6 +141,8 @@ def analyst_node(state: AgentState) -> dict:
             "status": STATUS_ANALYZING,
             "active_agent": AGENT_ANALYST,
             "tokens_used": state.get("tokens_used", 0) + tokens,
+            "prompt_tokens_used": state.get("prompt_tokens_used", 0) + prompt_tok,
+            "completion_tokens_used": state.get("completion_tokens_used", 0) + completion_tok,
             "errors": [],
         }
     except Exception as exc:

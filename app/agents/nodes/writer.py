@@ -1,4 +1,4 @@
-"""Writer node — generates the final polished report."""
+"""Writer node — generates the final polished report with source citations."""
 
 import time
 
@@ -37,7 +37,10 @@ Write the final report now.
     wait=wait_exponential(multiplier=1, min=1, max=8),
     reraise=True,
 )
-def _call_llm(task: str, analysis: str, sources: str, human_note: str) -> tuple[str, int]:
+def _call_llm(
+    task: str, analysis: str, sources: str, human_note: str
+) -> tuple[str, int, int, int]:
+    """Returns (report_text, total_tokens, prompt_tokens, completion_tokens)."""
     llm = get_llm(temperature=0.4)
     messages = [
         SystemMessage(content=SYSTEM_WRITER),
@@ -49,12 +52,20 @@ def _call_llm(task: str, analysis: str, sources: str, human_note: str) -> tuple[
     ]
     response = llm.invoke(messages)
     content = str(response.content)
+
     usage = getattr(response, "usage_metadata", None) or {}
-    tokens = usage.get("total_tokens", 0) if isinstance(usage, dict) else 0
-    return content, tokens
+    if isinstance(usage, dict):
+        prompt_tok = usage.get("input_tokens", 0)
+        completion_tok = usage.get("output_tokens", 0)
+        total_tok = usage.get("total_tokens", prompt_tok + completion_tok)
+    else:
+        prompt_tok = completion_tok = total_tok = 0
+
+    return content, total_tok, prompt_tok, completion_tok
 
 
 def _collect_sources(research_results: list[dict]) -> str:
+    """Build markdown source list for the LLM prompt."""
     seen: set[str] = set()
     lines = []
     for r in research_results:
@@ -66,12 +77,28 @@ def _collect_sources(research_results: list[dict]) -> str:
     return "\n".join(lines[:15]) if lines else "No external sources cited."
 
 
+def _append_sources_section(report: str, research_results: list[dict]) -> str:
+    """Append a deduplicated ## Sources section at the end of the report."""
+    seen: set[str] = set()
+    citations: list[str] = []
+    for r in research_results:
+        for s in r.get("sources", []):
+            url = s.get("url", "")
+            if url and url not in seen:
+                seen.add(url)
+                title = s.get("title") or url
+                citations.append(f"{len(citations) + 1}. [{title}]({url})")
+    if not citations:
+        return report
+    sources_block = "\n\n---\n\n## Sources\n\n" + "\n".join(citations[:20])
+    return report + sources_block
+
+
 def writer_node(state: AgentState) -> dict:
     """LangGraph node: write the final report."""
     t0 = time.monotonic()
     logger.info("writer_start", task_id=state["task_id"])
 
-    # If max revisions hit, note it in the report
     from app.core.config import settings  # noqa: PLC0415
 
     best_effort = state.get("revision_count", 0) >= settings.max_revisions
@@ -82,14 +109,21 @@ def writer_node(state: AgentState) -> dict:
     sources = _collect_sources(state.get("research_results", []))
 
     try:
-        report, tokens = _call_llm(
+        report, tokens, prompt_tok, completion_tok = _call_llm(
             state["original_task"],
             state.get("analysis", ""),
             sources,
             human_note,
         )
+
+        # Deterministically append a ## Sources section from research data
+        report = _append_sources_section(report, state.get("research_results", []))
+
         if best_effort:
-            report = f"*Note: This report was produced after reaching the maximum revision limit.*\n\n{report}"
+            report = (
+                "*Note: This report was produced after reaching the maximum revision limit.*\n\n"
+                + report
+            )
 
         duration_ms = int((time.monotonic() - t0) * 1000)
         logger.info(
@@ -104,6 +138,8 @@ def writer_node(state: AgentState) -> dict:
             "status": STATUS_BEST_EFFORT if best_effort else STATUS_COMPLETE,
             "active_agent": AGENT_WRITER,
             "tokens_used": state.get("tokens_used", 0) + tokens,
+            "prompt_tokens_used": state.get("prompt_tokens_used", 0) + prompt_tok,
+            "completion_tokens_used": state.get("completion_tokens_used", 0) + completion_tok,
             "errors": [],
         }
     except Exception as exc:

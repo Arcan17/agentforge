@@ -29,7 +29,15 @@ class TaskRun(Base):
 
     # Metrics
     total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    estimated_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+    model_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    llm_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
     total_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Celery integration
+    celery_task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     # Error tracking
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

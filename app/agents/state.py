@@ -41,6 +41,8 @@ class AgentState(TypedDict):
     status: str
     active_agent: str
     tokens_used: int
+    prompt_tokens_used: int       # input/prompt tokens (for cost calc)
+    completion_tokens_used: int   # output/completion tokens (for cost calc)
     errors: Annotated[list[str], lambda a, b: a + b]  # append-only
 
     # LangChain message history (auto-merged by add_messages reducer)

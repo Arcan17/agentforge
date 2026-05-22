@@ -10,6 +10,14 @@ AGENT_HUMAN_GATE = "human_gate"
 
 AGENT_ORDER = [AGENT_PLANNER, AGENT_RESEARCHER, AGENT_ANALYST, AGENT_CRITIC, AGENT_WRITER]
 
+# LLM pricing — USD per 1M tokens (input / output)
+MODEL_PRICING: dict[str, dict[str, float]] = {
+    "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
+    "claude-3-haiku-20240307":    {"input": 0.25, "output": 1.25},
+    "gpt-4o-mini":                {"input": 0.15, "output": 0.60},
+    "gpt-4o":                     {"input": 2.50, "output": 10.00},
+}
+
 # Task statuses
 STATUS_PENDING = "pending"
 STATUS_PLANNING = "planning"
@@ -20,6 +28,7 @@ STATUS_AWAITING_APPROVAL = "awaiting_approval"
 STATUS_WRITING = "writing"
 STATUS_COMPLETE = "complete"
 STATUS_FAILED = "failed"
+STATUS_CANCELLED = "cancelled"
 STATUS_BEST_EFFORT = "best_effort"  # max revisions hit, writer ran anyway
 
 # Step statuses

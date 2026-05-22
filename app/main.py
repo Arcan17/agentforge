@@ -24,10 +24,12 @@ app = FastAPI(
 )
 
 # Register routers
-from app.api.routers import health, human, metrics, stream, tasks  # noqa: E402
+from app.api.routers import audit, export, health, human, metrics, stream, tasks  # noqa: E402
 
 app.include_router(health.router)
 app.include_router(tasks.router)
 app.include_router(stream.router)
 app.include_router(human.router)
 app.include_router(metrics.router)
+app.include_router(audit.router)
+app.include_router(export.router)

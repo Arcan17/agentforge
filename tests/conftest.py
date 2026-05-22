@@ -63,6 +63,12 @@ def make_task_run(
     run.critic_score = None
     run.revision_count = 0
     run.total_tokens = 0
+    run.total_prompt_tokens = 0
+    run.total_completion_tokens = 0
+    run.estimated_cost_usd = None
+    run.model_name = None
+    run.llm_provider = None
+    run.celery_task_id = None
     run.total_duration_ms = None
     run.final_report = None
     run.error = None
@@ -91,6 +97,8 @@ def base_state(sample_task) -> dict:
         "status": "pending",
         "active_agent": "",
         "tokens_used": 0,
+        "prompt_tokens_used": 0,
+        "completion_tokens_used": 0,
         "errors": [],
         "messages": [],
     }

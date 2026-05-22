@@ -37,8 +37,10 @@ Approval threshold: {threshold}
     wait=wait_exponential(multiplier=1, min=1, max=8),
     reraise=True,
 )
-def _call_llm(task: str, analysis: str, threshold: float) -> tuple[float, bool, str, int]:
-    """Returns (score, approved, feedback, tokens)."""
+def _call_llm(
+    task: str, analysis: str, threshold: float
+) -> tuple[float, bool, str, int, int, int]:
+    """Returns (score, approved, feedback, total_tokens, prompt_tokens, completion_tokens)."""
     llm = get_llm(temperature=0.1)
     messages = [
         SystemMessage(content=SYSTEM_CRITIC),
@@ -69,8 +71,14 @@ def _call_llm(task: str, analysis: str, threshold: float) -> tuple[float, bool, 
     feedback = str(data.get("feedback", ""))
 
     usage = getattr(response, "usage_metadata", None) or {}
-    tokens = usage.get("total_tokens", 0) if isinstance(usage, dict) else 0
-    return score, approved, feedback, tokens
+    if isinstance(usage, dict):
+        prompt_tok = usage.get("input_tokens", 0)
+        completion_tok = usage.get("output_tokens", 0)
+        total_tok = usage.get("total_tokens", prompt_tok + completion_tok)
+    else:
+        prompt_tok = completion_tok = total_tok = 0
+
+    return score, approved, feedback, total_tok, prompt_tok, completion_tok
 
 
 def critic_node(state: AgentState) -> dict:
@@ -85,7 +93,7 @@ def critic_node(state: AgentState) -> dict:
     threshold = settings.critic_approval_threshold
 
     try:
-        score, approved, feedback, tokens = _call_llm(
+        score, approved, feedback, tokens, prompt_tok, completion_tok = _call_llm(
             state["original_task"], state.get("analysis", ""), threshold
         )
         duration_ms = int((time.monotonic() - t0) * 1000)
@@ -103,6 +111,8 @@ def critic_node(state: AgentState) -> dict:
             "status": STATUS_CRITIQUING,
             "active_agent": AGENT_CRITIC,
             "tokens_used": state.get("tokens_used", 0) + tokens,
+            "prompt_tokens_used": state.get("prompt_tokens_used", 0) + prompt_tok,
+            "completion_tokens_used": state.get("completion_tokens_used", 0) + completion_tok,
             "errors": [],
         }
     except Exception as exc:

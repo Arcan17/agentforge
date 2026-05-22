@@ -40,8 +40,9 @@ def test_researcher_processes_single_subtask(base_state):
 def test_researcher_processes_multiple_subtasks(base_state):
     base_state["subtasks"] = ["sub1", "sub2", "sub3"]
 
+    # _research_subtask now returns (result_dict, total_tokens, prompt_tokens, completion_tokens)
     def _mock_research(subtask, task):
-        return ({"subtask": subtask, "summary": f"Result for {subtask}", "sources": []}, 50)
+        return ({"subtask": subtask, "summary": f"Result for {subtask}", "sources": []}, 50, 30, 20)
 
     with patch("app.agents.nodes.researcher._research_subtask", side_effect=_mock_research):
         result = researcher_node(base_state)
@@ -58,17 +59,20 @@ def test_researcher_accumulates_tokens(base_state):
     base_state["tokens_used"] = 100
 
     results_map = {
-        "sub1": 50,
-        "sub2": 60,
+        "sub1": (50, 30, 20),
+        "sub2": (60, 40, 20),
     }
 
     def _mock_research(subtask, task):
-        return ({"subtask": subtask, "summary": "ok", "sources": []}, results_map[subtask])
+        total, prompt, completion = results_map[subtask]
+        return ({"subtask": subtask, "summary": "ok", "sources": []}, total, prompt, completion)
 
     with patch("app.agents.nodes.researcher._research_subtask", side_effect=_mock_research):
         result = researcher_node(base_state)
 
     assert result["tokens_used"] == 210  # 100 + 50 + 60
+    assert result["prompt_tokens_used"] == 70   # 30 + 40
+    assert result["completion_tokens_used"] == 40  # 20 + 20
 
 
 def test_researcher_continues_on_subtask_failure(base_state):
@@ -78,7 +82,7 @@ def test_researcher_continues_on_subtask_failure(base_state):
     def _mock_research(subtask: str, task: str):
         if subtask == "failing sub":
             raise RuntimeError("network error")
-        return ({"subtask": subtask, "summary": "Good result", "sources": []}, 60)
+        return ({"subtask": subtask, "summary": "Good result", "sources": []}, 60, 40, 20)
 
     # Patch _research_subtask directly (bypasses tenacity retry wrapper)
     with patch("app.agents.nodes.researcher._research_subtask", side_effect=_mock_research):

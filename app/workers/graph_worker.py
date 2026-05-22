@@ -27,11 +27,14 @@ from app.agents.graph import build_graph
 from app.agents.state import AgentState
 from app.core.config import settings
 from app.core.constants import (
+    ANTHROPIC_MODEL,
     EVENT_AGENT_COMPLETE,
     EVENT_AGENT_START,
     EVENT_AWAITING_APPROVAL,
     EVENT_TASK_COMPLETE,
     EVENT_TASK_FAILED,
+    MODEL_PRICING,
+    OPENAI_MODEL,
     STATUS_AWAITING_APPROVAL,
     STATUS_COMPLETE,
     STATUS_FAILED,
@@ -89,6 +92,8 @@ async def _run_graph_async(task_id: str, original_task: str, human_in_loop: bool
         "status": STATUS_PENDING,
         "active_agent": "",
         "tokens_used": 0,
+        "prompt_tokens_used": 0,
+        "completion_tokens_used": 0,
         "errors": [],
         "messages": [],
     }
@@ -172,6 +177,15 @@ async def _run_graph_async(task_id: str, original_task: str, human_in_loop: bool
         final_status = values.get("status", STATUS_COMPLETE)
         final_report = values.get("final_report")
         total_tokens = values.get("tokens_used", 0)
+        prompt_tokens = values.get("prompt_tokens_used", 0)
+        completion_tokens = values.get("completion_tokens_used", 0)
+
+        # Cost estimation
+        model_name = ANTHROPIC_MODEL if settings.llm_provider == "anthropic" else OPENAI_MODEL
+        pricing = MODEL_PRICING.get(model_name, {"input": 3.0, "output": 15.0})
+        estimated_cost = (
+            prompt_tokens * pricing["input"] + completion_tokens * pricing["output"]
+        ) / 1_000_000
 
         await _finalize_task(
             session_factory,
@@ -179,6 +193,11 @@ async def _run_graph_async(task_id: str, original_task: str, human_in_loop: bool
             status=final_status,
             final_report=final_report,
             total_tokens=total_tokens,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            estimated_cost_usd=estimated_cost,
+            model_name=model_name,
+            llm_provider=settings.llm_provider,
             total_duration_ms=total_duration_ms,
         )
         await _emit_event(
@@ -187,6 +206,7 @@ async def _run_graph_async(task_id: str, original_task: str, human_in_loop: bool
                 "task_id": task_id,
                 "status": final_status,
                 "total_tokens": total_tokens,
+                "estimated_cost_usd": round(estimated_cost, 6),
                 "duration_ms": total_duration_ms,
                 "is_final": True,
             },
@@ -332,6 +352,11 @@ async def _finalize_task(
     final_report: str | None = None,
     error: str | None = None,
     total_tokens: int = 0,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    estimated_cost_usd: float | None = None,
+    model_name: str | None = None,
+    llm_provider: str | None = None,
     total_duration_ms: int = 0,
 ) -> None:
     try:
@@ -344,6 +369,11 @@ async def _finalize_task(
                 run.final_report = final_report
                 run.error = error
                 run.total_tokens = total_tokens
+                run.total_prompt_tokens = prompt_tokens
+                run.total_completion_tokens = completion_tokens
+                run.estimated_cost_usd = estimated_cost_usd
+                run.model_name = model_name
+                run.llm_provider = llm_provider
                 run.total_duration_ms = total_duration_ms
                 run.updated_at = datetime.now(UTC)
                 await db.commit()

@@ -7,6 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.task_service import approve_task, create_task
 
+_CELERY_ID = str(uuid.uuid4())
+
+
+def _mock_celery():
+    """Return a mock run_graph whose .delay() returns a result with a real UUID .id."""
+    mock = MagicMock()
+    result = MagicMock()
+    result.id = _CELERY_ID
+    mock.delay.return_value = result
+    return mock
+
 VALID_TASK = (
     "Research the fintech market in Chile and identify the top 3 opportunities for 2025."
 )
@@ -16,8 +27,7 @@ VALID_TASK = (
 
 async def test_create_task_inserts_db_row(db_session: AsyncSession):
     """create_task persists a TaskRun and returns it."""
-    with patch("app.services.task_service.run_graph") as mock_celery:
-        mock_celery.delay = MagicMock()
+    with patch("app.services.task_service.run_graph", new=_mock_celery()):
         run = await create_task(db_session, VALID_TASK)
 
     assert run.id is not None
@@ -27,8 +37,7 @@ async def test_create_task_inserts_db_row(db_session: AsyncSession):
 
 async def test_create_task_enqueues_celery_with_correct_args(db_session: AsyncSession):
     """run_graph.delay must be called with (task_id, task_text, human_in_loop)."""
-    with patch("app.services.task_service.run_graph") as mock_celery:
-        mock_celery.delay = MagicMock()
+    with patch("app.services.task_service.run_graph", new=_mock_celery()) as mock_celery:
         run = await create_task(db_session, VALID_TASK, human_in_loop=False)
 
     mock_celery.delay.assert_called_once()
@@ -40,8 +49,7 @@ async def test_create_task_enqueues_celery_with_correct_args(db_session: AsyncSe
 
 async def test_create_task_human_in_loop_true(db_session: AsyncSession):
     """human_in_loop=True is stored on the run and forwarded to Celery."""
-    with patch("app.services.task_service.run_graph") as mock_celery:
-        mock_celery.delay = MagicMock()
+    with patch("app.services.task_service.run_graph", new=_mock_celery()) as mock_celery:
         run = await create_task(db_session, VALID_TASK, human_in_loop=True)
 
     assert run.human_in_loop is True
@@ -51,8 +59,7 @@ async def test_create_task_human_in_loop_true(db_session: AsyncSession):
 
 async def test_create_task_uses_settings_default(db_session: AsyncSession):
     """When human_in_loop is None the setting default is used."""
-    with patch("app.services.task_service.run_graph") as mock_celery:
-        mock_celery.delay = MagicMock()
+    with patch("app.services.task_service.run_graph", new=_mock_celery()):
         with patch("app.services.task_service.settings") as mock_settings:
             mock_settings.human_in_loop = False
             run = await create_task(db_session, VALID_TASK)
