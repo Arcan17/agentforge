@@ -240,6 +240,44 @@ curl -X POST http://localhost:8000/tasks/{task_id}/approve \
 
 ---
 
+## Frontend (Next.js Dashboard)
+
+A minimal, professional dashboard built with **Next.js 15**, **TypeScript**, and **Tailwind CSS**.
+
+### Pages
+
+| Route | Description |
+|-------|-------------|
+| `/` | Dashboard — health, metrics cards, agent latency chart, task lookup |
+| `/tasks/new` | Create a task with human-in-loop toggle |
+| `/tasks/[id]` | Live event stream, approval panel, report, audit tabs, export buttons |
+
+### Running locally
+
+```bash
+cd frontend
+cp .env.example .env.local
+# Edit .env.local — set NEXT_PUBLIC_API_BASE_URL if your backend is not on :8000
+
+npm install
+npm run dev          # → http://localhost:3000
+```
+
+> **SSE note**: `EventSource` cannot send custom headers.
+> Leave `NEXT_PUBLIC_API_KEY` empty (the backend default) so SSE streaming works.
+> If you enable `API_KEY` on the backend, either disable auth on the stream endpoint
+> or keep `API_KEY` unset.
+
+### Build & type-check
+
+```bash
+npm run build        # production build
+npm run type-check   # tsc --noEmit
+npm run lint         # ESLint
+```
+
+---
+
 ## Run the Demo Script
 
 ```bash
@@ -334,8 +372,12 @@ agentforge/
 │   ├── models/                ← SQLAlchemy ORM models
 │   ├── services/              ← Business logic (task, stream, metrics)
 │   └── workers/               ← Celery app + LangGraph worker
+├── frontend/                  ← Next.js 15 dashboard
+│   ├── src/app/               ← App Router pages (dashboard, new task, task detail)
+│   ├── src/components/        ← StatusBadge, TaskTimeline, ApprovalPanel, AuditTabs…
+│   └── src/lib/               ← Typed API client + utils
 ├── alembic/                   ← Database migrations (003 versions)
-├── tests/                     ← 126 tests
+├── tests/                     ← 130 tests
 ├── scripts/demo.py            ← End-to-end demo
 └── data/                      ← Sample task files
 ```
