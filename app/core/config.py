@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     def auth_enabled(self) -> bool:
         return bool(self.api_key)
 
+    # CORS — comma-separated list of allowed origins
+    # Example: CORS_ORIGINS=http://localhost:3000,https://agentforge.example.com
+    cors_origins_str: str = "http://localhost:3000"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins_str.split(",") if o.strip()]
+
     # Human-in-the-loop default
     human_in_loop: bool = False
 

@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { Bot } from 'lucide-react';
+import { Bot, BookOpen } from 'lucide-react';
+
+const API_DOCS_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000'}/docs`;
 
 export function Navbar() {
   return (
@@ -20,6 +22,15 @@ export function Navbar() {
           >
             Dashboard
           </Link>
+          <a
+            href={API_DOCS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors"
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            API Docs
+          </a>
           <Link
             href="/tasks/new"
             className="bg-indigo-600 text-white px-4 py-1.5 rounded-md hover:bg-indigo-700 transition-colors font-medium"

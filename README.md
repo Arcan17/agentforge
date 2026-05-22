@@ -24,8 +24,20 @@ A task description becomes a structured research report in minutes — decompose
 | **PostgreSQL persistence** | Full audit trail: task runs, agent steps, events |
 | **Celery + Redis** | Graph execution runs in a separate worker process — API stays responsive |
 | **Dual LLM support** | Switch between Anthropic (claude-3-5-sonnet) and OpenAI (gpt-4o-mini) via env var |
+| **Next.js dashboard** | Live task timeline, approval panel, audit tabs, report renderer, export buttons |
+| **CORS + SSE auth** | `?api_key=` query-param fallback so `EventSource` works with auth enabled |
 | **Retry logic** | `tenacity` — 3 attempts, exponential back-off 1–8 s |
-| **126 tests** | Unit + integration, zero real LLM calls, SQLite in CI |
+| **130 tests** | Unit + integration, zero real LLM calls, SQLite in CI |
+
+---
+
+## Screenshots
+
+| Dashboard | Create Task | Task Detail |
+|-----------|-------------|-------------|
+| Metrics cards, agent latency chart, UUID lookup | Textarea with char counter, human-in-loop toggle | Live event timeline, approval panel, Markdown report |
+
+> Run `npm run dev` inside `frontend/` and visit `http://localhost:3000` to see the dashboard live.
 
 ---
 
@@ -263,17 +275,33 @@ npm install
 npm run dev          # → http://localhost:3000
 ```
 
-> **SSE note**: `EventSource` cannot send custom headers.
-> Leave `NEXT_PUBLIC_API_KEY` empty (the backend default) so SSE streaming works.
-> If you enable `API_KEY` on the backend, either disable auth on the stream endpoint
-> or keep `API_KEY` unset.
+> **SSE + API key**: When `NEXT_PUBLIC_API_KEY` is set, the frontend appends it as
+> `?api_key=` on the SSE URL — the backend `/stream` endpoint accepts both the
+> `X-API-Key` header and the query parameter for exactly this reason.
+> Leave both env vars empty for local development (the backend default has no auth).
+
+### Running with Docker Compose (optional)
+
+```bash
+# Backend only (default):
+docker compose up -d
+
+# Backend + frontend together:
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 \
+  docker compose --profile frontend up -d
+# → API on :8000, dashboard on :3000
+```
+
+> **Note**: `NEXT_PUBLIC_*` vars are inlined at Next.js build time, so they must be
+> set as Docker build args (passed via `docker compose ... up`), not at container
+> runtime. For local development `npm run dev` is faster and picks up `.env.local`.
 
 ### Build & type-check
 
 ```bash
 npm run build        # production build
-npm run type-check   # tsc --noEmit
-npm run lint         # ESLint
+npm run type-check   # tsc --noEmit (0 errors)
+npm run lint         # ESLint (0 warnings)
 ```
 
 ---

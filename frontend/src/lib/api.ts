@@ -213,16 +213,19 @@ const FINAL_STREAM_EVENTS = new Set<string>([
  *
  * Returns a cleanup function — call it on component unmount.
  *
- * ⚠️  EventSource cannot send custom headers.
- *     Leave NEXT_PUBLIC_API_KEY empty (default) or disable API_KEY auth
- *     on the backend for SSE to work.
+ * The browser's `EventSource` API cannot send custom headers, so when
+ * `NEXT_PUBLIC_API_KEY` is set the key is appended as a `?api_key=` query
+ * parameter.  The backend's `/stream` endpoint accepts both the header and
+ * the query param for exactly this reason.
  */
 export function streamTask(
   taskId: string,
   onEvent: StreamHandler,
   onDone: () => void,
 ): () => void {
-  const es = new EventSource(`${API_BASE}/tasks/${taskId}/stream`);
+  const base = `${API_BASE}/tasks/${taskId}/stream`;
+  const url = API_KEY ? `${base}?api_key=${encodeURIComponent(API_KEY)}` : base;
+  const es = new EventSource(url);
 
   const makeHandler =
     (type: string) =>

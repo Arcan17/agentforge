@@ -68,5 +68,25 @@ services:
         condition: service_healthy
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
 
+  # ── Next.js frontend dashboard ──────────────────────────────────────────────
+  # Not started by default. Run with:
+  #   docker compose --profile frontend up
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* are inlined at build time — set them here for Docker builds.
+        # For local dev, use `npm run dev` inside ./frontend instead.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-}
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - app
+    profiles:
+      - frontend
+
 volumes:
   postgres_data:

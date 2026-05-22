@@ -54,6 +54,7 @@ export function TaskDetailClient({ taskId }: Props) {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const cleanupStreamRef = useRef<(() => void) | null>(null);
@@ -149,18 +150,28 @@ export function TaskDetailClient({ taskId }: Props) {
   };
 
   const handleDownloadMd = async () => {
+    setExportError(null);
     try {
       await api.downloadReportMd(taskId);
-    } catch {
-      // silently ignore — user will see nothing downloaded
+    } catch (e) {
+      setExportError(
+        e instanceof ApiError
+          ? `Export failed (${e.status}): ${e.message}`
+          : 'Could not download report. Try again.',
+      );
     }
   };
 
   const handleDownloadJson = async () => {
+    setExportError(null);
     try {
       await api.downloadReportJson(taskId);
-    } catch {
-      // silently ignore
+    } catch (e) {
+      setExportError(
+        e instanceof ApiError
+          ? `Export failed (${e.status}): ${e.message}`
+          : 'Could not download report. Try again.',
+      );
     }
   };
 
@@ -294,6 +305,19 @@ export function TaskDetailClient({ taskId }: Props) {
       {cancelError && (
         <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2.5 text-sm text-red-700">
           {cancelError}
+        </div>
+      )}
+
+      {/* Export error — dismissable */}
+      {exportError && (
+        <div className="flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm text-amber-800">
+          <span>{exportError}</span>
+          <button
+            onClick={() => setExportError(null)}
+            className="ml-4 text-amber-600 hover:text-amber-800 font-medium flex-shrink-0"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 

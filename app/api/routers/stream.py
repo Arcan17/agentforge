@@ -5,13 +5,13 @@ import json
 from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
 
-from app.core.auth import require_api_key
+from app.core.auth import require_api_key_sse
 from app.services.stream_service import stream_events
 
 router = APIRouter(prefix="/tasks", tags=["stream"])
 
 
-@router.get("/{task_id}/stream", dependencies=[Depends(require_api_key)])
+@router.get("/{task_id}/stream", dependencies=[Depends(require_api_key_sse)])
 async def stream_task_events(task_id: str) -> EventSourceResponse:
     """Stream live SSE events for a running task.
 
