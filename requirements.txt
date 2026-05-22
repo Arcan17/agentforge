@@ -41,6 +41,10 @@ tiktoken==0.8.0
 # Scheduling (cleanup jobs)
 apscheduler==3.10.4
 
+# Celery + Redis (distributed task queue)
+celery[redis]==5.4.0
+redis==5.2.0
+
 # Dev / test
 pytest==8.3.4
 pytest-asyncio==0.24.0

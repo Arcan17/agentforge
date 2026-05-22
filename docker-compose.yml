@@ -1,4 +1,5 @@
 services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     restart: always
@@ -14,6 +15,17 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Redis (broker + result backend) ────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI (API layer — no graph execution) ────────────────────────────────
   app:
     build:
       context: .
@@ -23,11 +35,38 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://agentforge:agentforge@db:5432/agentforge
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Run Alembic migrations before starting the API server
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"
+
+  # ── Celery worker (LangGraph execution) ────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://agentforge:agentforge@db:5432/agentforge
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
 
 volumes:
   postgres_data:

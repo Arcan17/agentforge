@@ -1,6 +1,5 @@
 """LangGraph StateGraph definition for AgentForge."""
 
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from app.agents.nodes.analyst import analyst_node
@@ -104,13 +103,3 @@ def build_graph() -> StateGraph:
     builder.add_edge(AGENT_WRITER, END)
 
     return builder
-
-
-# Singleton compiled graph (MemorySaver enables interrupt/resume)
-_checkpointer = MemorySaver()
-_compiled_graph = build_graph().compile(checkpointer=_checkpointer)
-
-
-def get_graph():  # type: ignore[return]
-    """Return the singleton compiled graph."""
-    return _compiled_graph

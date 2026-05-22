@@ -1,71 +1,73 @@
-"""SSE stream service — manages per-task asyncio queues for real-time event streaming."""
+"""SSE stream service — polls agent_events table for real-time event delivery.
+
+Replaces the previous asyncio.Queue approach.  Any number of FastAPI workers
+can serve the same task's SSE stream because the source of truth is PostgreSQL,
+not an in-process memory structure.
+"""
 
 import asyncio
-from datetime import UTC, datetime
-from typing import Any
+import time
+import uuid
 
+from sqlalchemy import select
+
+from app.core.constants import EVENT_TASK_COMPLETE, EVENT_TASK_FAILED
 from app.core.logging import get_logger
+from app.models.agent_event import AgentEvent
+from app.models.database import AsyncSessionLocal
 
 logger = get_logger(__name__)
 
-# task_id → Queue of event dicts
-_queues: dict[str, asyncio.Queue] = {}
-
-_SENTINEL = object()  # marks stream end
+_FINAL_EVENTS = frozenset({EVENT_TASK_COMPLETE, EVENT_TASK_FAILED})
 
 
-def create_queue(task_id: str) -> asyncio.Queue:
-    """Create (or reset) the event queue for a task."""
-    q: asyncio.Queue = asyncio.Queue(maxsize=200)
-    _queues[task_id] = q
-    return q
+async def stream_events(
+    task_id: str,
+    poll_interval: float = 1.0,
+    timeout: float = 300.0,
+):
+    """Async generator — polls agent_events and yields event dicts.
 
+    Each yielded dict has the shape ``{"event": str, "data": dict}``.
+    The generator stops when:
+    * a terminal event (task_complete / task_failed) is received,
+    * any event with ``data["is_final"] == True`` is received, or
+    * *timeout* seconds elapse with no terminal event.
 
-def get_queue(task_id: str) -> asyncio.Queue | None:
-    """Return the existing queue for a task, if any."""
-    return _queues.get(task_id)
+    Args:
+        task_id:       UUID string of the task to stream.
+        poll_interval: Seconds to sleep when no new events are found.
+        timeout:       Maximum total seconds before the generator exits.
+    """
+    last_id = 0
+    task_uuid = uuid.UUID(task_id)
+    deadline = time.monotonic() + timeout
 
+    while time.monotonic() < deadline:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(AgentEvent)
+                .where(AgentEvent.task_id == task_uuid)
+                .where(AgentEvent.id > last_id)
+                .order_by(AgentEvent.id)
+            )
+            new_events = result.scalars().all()
 
-async def publish(task_id: str, event_type: str, data: dict[str, Any]) -> None:
-    """Publish an event to the task's SSE queue."""
-    q = _queues.get(task_id)
-    if q is None:
-        return
-    event = {
-        "event": event_type,
-        "data": {**data, "timestamp": datetime.now(UTC).isoformat()},
-    }
-    try:
-        q.put_nowait(event)
-    except asyncio.QueueFull:
-        logger.warning("stream_queue_full", task_id=task_id, dropped_event=event_type)
+        if not new_events:
+            await asyncio.sleep(poll_interval)
+            continue
 
+        for ev in new_events:
+            last_id = ev.id
+            yield {
+                "event": ev.event_type,
+                "data": {
+                    **ev.data,
+                    "timestamp": ev.created_at.isoformat(),
+                },
+            }
+            # Stop as soon as we see a terminal event
+            if ev.event_type in _FINAL_EVENTS or ev.data.get("is_final"):
+                return
 
-async def close_queue(task_id: str) -> None:
-    """Signal end-of-stream and remove the queue."""
-    q = _queues.get(task_id)
-    if q:
-        try:
-            q.put_nowait(_SENTINEL)
-        except asyncio.QueueFull:
-            pass
-
-
-async def stream_events(task_id: str, timeout: float = 300.0):
-    """Async generator — yields event dicts until sentinel or timeout."""
-    q = _queues.get(task_id)
-    if q is None:
-        return
-    try:
-        while True:
-            try:
-                item = await asyncio.wait_for(q.get(), timeout=timeout)
-                if item is _SENTINEL:
-                    break
-                yield item
-            except TimeoutError:
-                logger.info("stream_timeout", task_id=task_id)
-                break
-    finally:
-        # Clean up when client disconnects
-        _queues.pop(task_id, None)
+        # Got non-terminal events — loop immediately (no sleep) to drain the queue

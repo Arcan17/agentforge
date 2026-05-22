@@ -6,6 +6,7 @@ class Settings(BaseSettings):
 
     app_name: str = "AgentForge"
     log_level: str = "INFO"
+    environment: str = "development"  # "development" | "production"
 
     # Database
     database_url: str = "postgresql+asyncpg://agentforge:agentforge@localhost:5432/agentforge"
@@ -20,6 +21,10 @@ class Settings(BaseSettings):
     critic_approval_threshold: float = 0.75
     max_research_results: int = 5
     request_timeout_seconds: int = 30
+
+    # Celery + Redis
+    celery_broker_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/0"
 
     # Auth
     api_key: str = ""

@@ -4,7 +4,6 @@ from fastapi import FastAPI
 
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
-from app.models.database import create_tables
 
 logger = get_logger(__name__)
 
@@ -12,8 +11,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # type: ignore[type-arg]
     configure_logging(settings.log_level)
-    logger.info("agentforge_startup", provider=settings.llm_provider)
-    await create_tables()
+    logger.info("agentforge_startup", provider=settings.llm_provider, env=settings.environment)
     yield
     logger.info("agentforge_shutdown")
 

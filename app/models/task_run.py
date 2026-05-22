@@ -20,6 +20,7 @@ class TaskRun(Base):
     # Human-in-the-loop
     human_in_loop: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     human_decision: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    human_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Results
     final_report: Mapped[str | None] = mapped_column(Text, nullable=True)

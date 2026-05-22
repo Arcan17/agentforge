@@ -1,122 +1,171 @@
-"""Tests for the SSE stream service — pure asyncio, no HTTP."""
+"""Tests for the DB-polling SSE stream service."""
+
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
+
+from app.services.stream_service import stream_events
+
+# ─── Helpers ─────────────────────────────────────────────────────────────────
+
+def _make_agent_event(id: int, event_type: str, data: dict | None = None) -> MagicMock:
+    """Build a mock AgentEvent ORM object."""
+    ev = MagicMock()
+    ev.id = id
+    ev.event_type = event_type
+    ev.data = data or {}
+    ev.created_at = datetime.now(UTC)
+    return ev
 
 
+def _db_factory(batches: list[list]):
+    """
+    Return a mock AsyncSessionLocal context manager that yields successive
+    *batches* of events.  Once all batches are exhausted the last one repeats.
+    """
+    state = {"call": 0}
 
-from app.services import stream_service
-from app.services.stream_service import (
-    close_queue,
-    create_queue,
-    get_queue,
-    publish,
-    stream_events,
-)
+    class _MockDB:
+        async def __aenter__(self):
+            return self
 
+        async def __aexit__(self, *_):
+            pass
 
-async def test_create_queue_returns_queue():
-    q = create_queue("task-001")
-    assert q is not None
-    assert get_queue("task-001") is q
-    # Cleanup
-    stream_service._queues.pop("task-001", None)
+        async def execute(self, _query):
+            idx = min(state["call"], len(batches) - 1)
+            state["call"] += 1
+            mock_result = MagicMock()
+            mock_result.scalars.return_value.all.return_value = batches[idx]
+            return mock_result
 
+    def factory():
+        return _MockDB()
 
-async def test_get_queue_missing_returns_none():
-    assert get_queue("task-nonexistent") is None
-
-
-async def test_publish_event_lands_in_queue():
-    task_id = "task-pub-001"
-    create_queue(task_id)
-
-    await publish(task_id, "agent_start", {"agent": "planner", "step": 1})
-
-    q = get_queue(task_id)
-    assert q is not None
-    item = q.get_nowait()
-    assert item["event"] == "agent_start"
-    assert item["data"]["agent"] == "planner"
-    assert "timestamp" in item["data"]
-
-    stream_service._queues.pop(task_id, None)
+    return factory
 
 
-async def test_publish_to_missing_queue_is_silently_ignored():
-    """Publishing to a task with no queue must not raise."""
-    await publish("task-no-queue", "agent_start", {"agent": "planner"})  # no exception
+# ─── Tests ────────────────────────────────────────────────────────────────────
+
+async def test_stream_events_yields_all_events_in_order():
+    """Events returned by DB query are yielded in insertion order."""
+    ev1 = _make_agent_event(1, "agent_start", {"agent": "planner", "step": 1})
+    ev2 = _make_agent_event(2, "agent_complete", {"agent": "planner"})
+    ev3 = _make_agent_event(3, "task_complete", {"status": "complete", "is_final": True})
+
+    factory = _db_factory([[ev1, ev2, ev3]])
+
+    with patch("app.services.stream_service.AsyncSessionLocal", factory):
+        received = []
+        async for event in stream_events("00000000-0000-0000-0000-000000000001", poll_interval=0.01, timeout=5.0):
+            received.append(event)
+
+    assert len(received) == 3
+    assert received[0]["event"] == "agent_start"
+    assert received[0]["data"]["agent"] == "planner"
+    assert received[1]["event"] == "agent_complete"
+    assert received[2]["event"] == "task_complete"
 
 
-async def test_close_queue_puts_sentinel():
-    task_id = "task-close-001"
-    create_queue(task_id)
+async def test_stream_events_stops_on_task_complete():
+    """Generator stops immediately after task_complete."""
+    ev1 = _make_agent_event(1, "agent_start", {"agent": "planner"})
+    ev2 = _make_agent_event(2, "task_complete", {"status": "complete"})
+    ev3 = _make_agent_event(3, "agent_start", {"agent": "writer"})  # should never arrive
 
-    await close_queue(task_id)
+    factory = _db_factory([[ev1, ev2, ev3]])
 
-    # After close, stream_events should finish immediately
-    events = []
-    async for event in stream_events(task_id):
-        events.append(event)
+    with patch("app.services.stream_service.AsyncSessionLocal", factory):
+        received = []
+        async for event in stream_events("00000000-0000-0000-0000-000000000002", poll_interval=0.01, timeout=5.0):
+            received.append(event)
 
-    # queue was already removed by stream_events cleanup
-    assert events == []
-
-
-async def test_stream_events_yields_events_then_stops():
-    task_id = "task-stream-001"
-    create_queue(task_id)
-
-    await publish(task_id, "agent_start", {"agent": "planner"})
-    await publish(task_id, "agent_complete", {"agent": "planner"})
-    await close_queue(task_id)
-
-    events = []
-    async for event in stream_events(task_id):
-        events.append(event)
-
-    assert len(events) == 2
-    assert events[0]["event"] == "agent_start"
-    assert events[1]["event"] == "agent_complete"
+    # ev3 is after the terminal event — must not be yielded
+    assert len(received) == 2
+    assert received[-1]["event"] == "task_complete"
 
 
-async def test_stream_events_stops_on_sentinel():
-    task_id = "task-sentinel-001"
-    create_queue(task_id)
+async def test_stream_events_stops_on_task_failed():
+    """Generator stops immediately after task_failed."""
+    ev = _make_agent_event(1, "task_failed", {"error": "llm_timeout"})
 
-    await publish(task_id, "task_complete", {"status": "complete"})
-    await close_queue(task_id)
+    factory = _db_factory([[ev]])
 
-    received = []
-    async for ev in stream_events(task_id):
-        received.append(ev)
+    with patch("app.services.stream_service.AsyncSessionLocal", factory):
+        received = []
+        async for event in stream_events("00000000-0000-0000-0000-000000000003", poll_interval=0.01, timeout=5.0):
+            received.append(event)
 
-    # Only the real event, not the sentinel
+    assert len(received) == 1
+    assert received[0]["event"] == "task_failed"
+
+
+async def test_stream_events_stops_on_is_final_flag():
+    """Any event with is_final=True terminates the stream."""
+    ev = _make_agent_event(1, "task_complete", {"status": "complete", "is_final": True})
+
+    factory = _db_factory([[ev]])
+
+    with patch("app.services.stream_service.AsyncSessionLocal", factory):
+        received = []
+        async for event in stream_events("00000000-0000-0000-0000-000000000004", poll_interval=0.01, timeout=5.0):
+            received.append(event)
+
+    assert len(received) == 1
+
+
+async def test_stream_events_polls_after_empty_batch():
+    """Empty poll → events arrive on second poll → yielded correctly."""
+    ev = _make_agent_event(1, "task_complete", {"is_final": True})
+    # First poll: nothing.  Second poll: terminal event.
+    factory = _db_factory([[], [ev]])
+
+    with patch("app.services.stream_service.AsyncSessionLocal", factory):
+        received = []
+        async for event in stream_events("00000000-0000-0000-0000-000000000005", poll_interval=0.01, timeout=5.0):
+            received.append(event)
+
     assert len(received) == 1
     assert received[0]["event"] == "task_complete"
 
 
-async def test_publish_queue_full_does_not_raise():
-    """Filling the queue past maxsize should silently drop messages."""
-    task_id = "task-full-001"
-    create_queue(task_id)
+async def test_stream_events_timeout_yields_nothing():
+    """When no events arrive within timeout the generator exits without error."""
+    factory = _db_factory([[]])  # always empty
 
-    # Fill queue to capacity (maxsize=200)
-    for i in range(200):
-        await publish(task_id, "agent_start", {"step": i})
+    with patch("app.services.stream_service.AsyncSessionLocal", factory):
+        received = []
+        async for event in stream_events("00000000-0000-0000-0000-000000000006", poll_interval=0.01, timeout=0.05):
+            received.append(event)
 
-    # This 201st publish should be silently dropped, not raise
-    await publish(task_id, "overflow", {"step": 201})
-
-    stream_service._queues.pop(task_id, None)
+    assert received == []
 
 
-async def test_publish_event_contains_timestamp():
-    task_id = "task-ts-001"
-    create_queue(task_id)
-    await publish(task_id, "test_event", {"key": "value"})
+async def test_stream_events_timestamp_injected():
+    """Each yielded event dict must contain a 'timestamp' key in data."""
+    ev = _make_agent_event(1, "task_complete", {"is_final": True})
+    factory = _db_factory([[ev]])
 
-    q = get_queue(task_id)
-    item = q.get_nowait()
-    assert "timestamp" in item["data"]
-    # Timestamp should be ISO format
-    assert "T" in item["data"]["timestamp"]
+    with patch("app.services.stream_service.AsyncSessionLocal", factory):
+        received = []
+        async for event in stream_events("00000000-0000-0000-0000-000000000007", poll_interval=0.01, timeout=5.0):
+            received.append(event)
 
-    stream_service._queues.pop(task_id, None)
+    assert "timestamp" in received[0]["data"]
+    assert "T" in received[0]["data"]["timestamp"]  # ISO-8601 marker
+
+
+async def test_stream_events_tracks_last_id_across_polls():
+    """Each successive poll uses the highest seen id — events are not repeated."""
+    ev1 = _make_agent_event(10, "agent_start", {"agent": "planner"})
+    ev2 = _make_agent_event(20, "task_complete", {"is_final": True})
+    # Two separate polls: first yields ev1, second yields ev2
+    factory = _db_factory([[ev1], [ev2]])
+
+    with patch("app.services.stream_service.AsyncSessionLocal", factory):
+        received = []
+        async for event in stream_events("00000000-0000-0000-0000-000000000008", poll_interval=0.001, timeout=5.0):
+            received.append(event)
+
+    assert len(received) == 2
+    assert received[0]["event"] == "agent_start"
+    assert received[1]["event"] == "task_complete"

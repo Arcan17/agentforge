@@ -12,13 +12,14 @@ A task description becomes a structured research report in minutes — decompose
 |---------|--------|
 | **5-node LangGraph pipeline** | Planner → Researcher → Analyst → Critic → Writer |
 | **Automatic revision loop** | Critic scores 0–1; if < 0.75, Analyst revises with feedback (max 3 cycles) |
-| **Human-in-the-loop** | `interrupt()` pauses graph; `/approve` endpoint resumes it |
-| **Real-time SSE streaming** | Live agent events streamed per task (`agent_start`, `agent_complete`, …) |
+| **Human-in-the-loop** | `interrupt()` pauses graph; `/approve` endpoint resumes it; decision persisted in PostgreSQL |
+| **Real-time SSE streaming** | DB-polled agent events streamed per task (`agent_start`, `agent_complete`, …) |
 | **Tool-using agents** | `web_search` (DuckDuckGo), `url_reader`, `calculator`, `file_reader` |
 | **PostgreSQL persistence** | Full audit trail: task runs, agent steps, events |
+| **Celery + Redis** | Graph execution runs in a separate worker process — API stays responsive |
 | **Dual LLM support** | Switch between Anthropic (claude-3-5-sonnet) and OpenAI (gpt-4o-mini) via env var |
 | **Retry logic** | `tenacity` — 3 attempts, exponential back-off 1–8 s |
-| **104 tests** | Unit + integration, zero real LLM calls, SQLite in CI |
+| **112 tests** | Unit + integration, zero real LLM calls, SQLite in CI |
 
 ---
 
@@ -28,6 +29,9 @@ A task description becomes a structured research report in minutes — decompose
 
 - Docker & Docker Compose
 - Anthropic **or** OpenAI API key
+
+> **Architecture**: `docker compose up` starts four services — PostgreSQL, Redis, the FastAPI API server, and the Celery worker that runs LangGraph. The API server stays responsive while the worker executes long-running LLM pipelines.
+
 
 ### 1. Clone & configure
 
@@ -240,7 +244,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full graph diagram and design dec
 
 - **Python 3.11** · **FastAPI 0.115** · **LangGraph 0.2.68**
 - **LangChain Anthropic / OpenAI** · **PostgreSQL 16** · **SQLAlchemy 2.0**
-- **sse-starlette** · **httpx** · **BeautifulSoup4** · **tenacity**
+- **Celery 5.4** · **Redis 7** · **sse-starlette** · **httpx** · **BeautifulSoup4** · **tenacity**
 - **pytest 8.3** · **ruff** · **Docker**
 
 ---
