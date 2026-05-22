@@ -411,6 +411,7 @@ agentforge/
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full graph diagram and design decisions.
+See [DEPLOY.md](DEPLOY.md) for step-by-step Railway deployment instructions.
 
 ---
 

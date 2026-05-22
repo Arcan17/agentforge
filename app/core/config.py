@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,7 +10,17 @@ class Settings(BaseSettings):
     environment: str = "development"  # "development" | "production"
 
     # Database
+    # Railway and most managed Postgres providers deliver postgresql:// URLs.
+    # SQLAlchemy async requires postgresql+asyncpg://.
+    # The validator below converts automatically so you can paste the URL as-is.
     database_url: str = "postgresql+asyncpg://agentforge:agentforge@localhost:5432/agentforge"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _coerce_db_url_scheme(cls, v: object) -> object:
+        if isinstance(v, str) and v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
 
     # LLM
     llm_provider: str = "anthropic"  # "anthropic" | "openai"
