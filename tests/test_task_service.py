@@ -1,11 +1,11 @@
-"""Tests for task_service — create tasks and approve human decisions."""
+"""Tests for task_service — create tasks, approve, and cancel."""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.task_service import approve_task, create_task
+from app.services.task_service import approve_task, cancel_task, create_task
 
 _CELERY_ID = str(uuid.uuid4())
 
@@ -152,3 +152,63 @@ async def test_approve_task_reject_decision():
 
     assert result is True
     assert mock_run.human_decision == "reject"
+
+
+# ─── cancel_task ──────────────────────────────────────────────────────────────
+
+async def test_cancel_task_returns_cancelled():
+    """cancel_task returns 'cancelled' for a running task."""
+    task_id = str(uuid.uuid4())
+    mock_run = MagicMock()
+    mock_run.status = "running"
+    mock_run.celery_task_id = None  # no Celery job to revoke
+
+    mock_db = _mock_db_with_run(mock_run)
+
+    with patch("app.services.task_service.AsyncSessionLocal", return_value=mock_db):
+        result = await cancel_task(task_id)
+
+    assert result == "cancelled"
+    assert mock_run.status == "cancelled"
+    mock_db.commit.assert_called_once()
+
+
+async def test_cancel_task_returns_not_found():
+    """cancel_task returns 'not_found' when task doesn't exist."""
+    task_id = str(uuid.uuid4())
+    mock_db = _mock_db_with_run(None)
+
+    with patch("app.services.task_service.AsyncSessionLocal", return_value=mock_db):
+        result = await cancel_task(task_id)
+
+    assert result == "not_found"
+    mock_db.commit.assert_not_called()
+
+
+async def test_cancel_task_returns_already_terminal():
+    """cancel_task returns 'already_terminal' when task is already complete."""
+    task_id = str(uuid.uuid4())
+    mock_run = MagicMock()
+    mock_run.status = "complete"
+
+    mock_db = _mock_db_with_run(mock_run)
+
+    with patch("app.services.task_service.AsyncSessionLocal", return_value=mock_db):
+        result = await cancel_task(task_id)
+
+    assert result == "already_terminal"
+    mock_db.commit.assert_not_called()
+
+
+async def test_cancel_task_already_terminal_for_all_statuses():
+    """All terminal statuses (complete/failed/cancelled/best_effort) return already_terminal."""
+    for terminal_status in ("complete", "failed", "cancelled", "best_effort"):
+        task_id = str(uuid.uuid4())
+        mock_run = MagicMock()
+        mock_run.status = terminal_status
+        mock_db = _mock_db_with_run(mock_run)
+
+        with patch("app.services.task_service.AsyncSessionLocal", return_value=mock_db):
+            result = await cancel_task(task_id)
+
+        assert result == "already_terminal", f"Expected 'already_terminal' for status={terminal_status}"

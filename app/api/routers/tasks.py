@@ -72,10 +72,12 @@ async def cancel_task_endpoint(task_id: str) -> dict:
     except ValueError:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    cancelled = await cancel_task(task_id)
-    if not cancelled:
+    result = await cancel_task(task_id)
+    if result == "not_found":
+        raise HTTPException(status_code=404, detail="Task not found")
+    if result == "already_terminal":
         raise HTTPException(
             status_code=409,
-            detail="Task cannot be cancelled: already in a terminal state or not found",
+            detail="Task cannot be cancelled: already in a terminal state",
         )
     return {"task_id": task_id, "status": "cancelled"}

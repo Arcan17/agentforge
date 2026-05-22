@@ -85,11 +85,13 @@ async def approve_task(task_id: str, decision: str, feedback: str | None = None)
     return True
 
 
-async def cancel_task(task_id: str) -> bool:
+async def cancel_task(task_id: str) -> str:
     """Cancel a running task by revoking its Celery job and marking it cancelled.
 
-    Returns True if the task was successfully cancelled, False if it was already
-    in a terminal state or not found.
+    Returns one of three string outcomes:
+    - ``"cancelled"``        — task was successfully cancelled.
+    - ``"not_found"``        — no task with that ID exists.
+    - ``"already_terminal"`` — task is already complete / failed / cancelled.
     """
     task_uuid = uuid.UUID(task_id)
 
@@ -97,11 +99,11 @@ async def cancel_task(task_id: str) -> bool:
         run = await db.scalar(select(TaskRun).where(TaskRun.id == task_uuid))
         if run is None:
             logger.warning("cancel_task_not_found", task_id=task_id)
-            return False
+            return "not_found"
 
         if run.status in _TERMINAL_STATUSES:
             logger.warning("cancel_task_already_terminal", task_id=task_id, status=run.status)
-            return False
+            return "already_terminal"
 
         # Revoke the Celery task (terminate=True kills running worker process)
         if run.celery_task_id:
@@ -114,4 +116,4 @@ async def cancel_task(task_id: str) -> bool:
         await db.commit()
 
     logger.info("task_cancelled", task_id=task_id)
-    return True
+    return "cancelled"

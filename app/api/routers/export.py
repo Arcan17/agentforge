@@ -4,6 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas.task import ReportExportResponse
 from app.core.auth import require_api_key
@@ -25,7 +26,7 @@ router = APIRouter(prefix="/tasks", tags=["export"])
 )
 async def export_report_markdown(
     task_id: str,
-    db=Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> Response:
     """Return the final report as a downloadable Markdown file."""
     try:
@@ -55,7 +56,7 @@ async def export_report_markdown(
 )
 async def export_report_json(
     task_id: str,
-    db=Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> ReportExportResponse:
     """Return the final report together with full task metadata as JSON."""
     try:
