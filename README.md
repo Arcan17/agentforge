@@ -4,6 +4,27 @@
 
 A task description becomes a structured research report in minutes — decomposed by a Planner, researched on the web, analysed, critiqued with automatic revision loops, and optionally gated by a human reviewer before the final write.
 
+> **A live public deployment is intentionally not provided** to avoid uncontrolled
+> LLM API usage and cost exposure. The project runs in full with `docker compose up -d`.
+> See the [video demo](#demo) and screenshots below, or clone and run it locally.
+
+---
+
+## Demo
+
+**Video walkthrough**: *(coming soon — recording in progress)*
+
+### Screenshots
+
+| | |
+|---|---|
+| ![Dashboard](docs/screenshots/01-dashboard.png) | ![Create Task](docs/screenshots/02-create-task.png) |
+| **Dashboard** — health badge, metrics cards, agent latency chart | **Create Task** — textarea with char counter, human-in-loop toggle |
+| ![Task Running](docs/screenshots/03-task-running.png) | ![Task Complete](docs/screenshots/04-task-complete.png) |
+| **Live events** — SSE timeline while agents execute | **Final report** — Markdown rendered with cited sources |
+| ![Approval Panel](docs/screenshots/05-approval.png) | ![Audit Tabs](docs/screenshots/06-audit.png) |
+| **Human approval** — pause, review, approve/reject/feedback | **Execution audit** — steps with token counts and durations |
+
 ---
 
 ## Key Features
@@ -30,12 +51,6 @@ A task description becomes a structured research report in minutes — decompose
 | **130 tests** | Unit + integration, zero real LLM calls, SQLite in CI |
 
 ---
-
-## Screenshots
-
-| Dashboard | Create Task | Task Detail |
-|-----------|-------------|-------------|
-| Metrics cards, agent latency chart, UUID lookup | Textarea with char counter, human-in-loop toggle | Live event timeline, approval panel, Markdown report |
 
 > Run `npm run dev` inside `frontend/` and visit `http://localhost:3000` to see the dashboard live.
 
