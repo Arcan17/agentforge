@@ -6,13 +6,13 @@ A task description becomes a structured research report in minutes — decompose
 
 > **A live public deployment is intentionally not provided** to avoid uncontrolled
 > LLM API usage and cost exposure. The project runs in full with `docker compose up -d`.
-> See the [video demo](#demo) and screenshots below, or clone and run it locally.
+> See the demo and screenshots below, or clone and run it locally.
 
 ---
 
 ## Demo
 
-**Video walkthrough**: *(coming soon — recording in progress)*
+![AgentForge — dashboard, task creation, LangGraph pipeline, live SSE events](assets/agentforge-demo.gif)
 
 ### Screenshots
 
