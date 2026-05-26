@@ -322,8 +322,6 @@ def test_url_reader_blocks_unsupported_content_type():
 
 def test_url_reader_blocks_redirect_to_private_ip():
     """SSRF via open redirect: public URL redirects to private address must be blocked."""
-    import app.agents.tools.url_reader as ur_module
-
     mock_redirect = MagicMock()
     mock_redirect.is_redirect = True
     mock_redirect.headers = {"location": "http://169.254.169.254/latest/meta-data/"}
