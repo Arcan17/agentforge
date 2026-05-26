@@ -132,7 +132,9 @@ revision_count ≥ max_revisions  →  skip to Writer regardless of score
 
 ## SSE Streaming
 
-Each task gets an `asyncio.Queue` (maxsize 200). The background `asyncio.Task` running the graph publishes events to the queue. Clients consume via `GET /tasks/{id}/stream` (Server-Sent Events, `sse-starlette`).
+Agent events are persisted into the `agent_events` PostgreSQL table by the Celery worker as each graph node executes. The FastAPI SSE endpoint (`GET /tasks/{id}/stream`) polls this table and streams new rows to connected clients via `sse-starlette`.
+
+This design replaces an earlier in-process `asyncio.Queue` approach. Because the source of truth is PostgreSQL rather than worker memory, any number of FastAPI replicas can serve the same task stream and events survive worker restarts.
 
 Event types:
 - `agent_start` — node began
@@ -198,7 +200,7 @@ agentforge/
 │   ├── models/                ← SQLAlchemy ORM (task_run, agent_step, agent_event)
 │   └── services/              ← task_service, stream_service, metrics_service
 ├── alembic/                   ← DB migrations
-├── tests/                     ← 104 pytest tests
+├── tests/                     ← 122 pytest tests
 ├── scripts/demo.py            ← CLI demo
 └── data/                      ← Sample task files
 ```

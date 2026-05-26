@@ -204,6 +204,8 @@ def test_url_reader_success():
     )
     mock_response = MagicMock()
     mock_response.text = html
+    mock_response.content = html.encode()
+    mock_response.headers = {"content-type": "text/html; charset=utf-8"}
     mock_response.raise_for_status = MagicMock()
 
     mock_client = MagicMock()
@@ -212,7 +214,8 @@ def test_url_reader_success():
     mock_client.get.return_value = mock_response
 
     with patch("app.agents.tools.url_reader.httpx.Client", return_value=mock_client):
-        result = url_reader.invoke({"url": "https://example.com"})
+        with patch("app.agents.tools.url_reader._is_private_host", return_value=False):
+            result = url_reader.invoke({"url": "https://example.com"})
 
     assert result["error"] is None
     assert result["title"] == "Test Page"
@@ -227,7 +230,8 @@ def test_url_reader_network_error():
     mock_client.get.side_effect = Exception("connection refused")
 
     with patch("app.agents.tools.url_reader.httpx.Client", return_value=mock_client):
-        result = url_reader.invoke({"url": "https://unreachable.example"})
+        with patch("app.agents.tools.url_reader._is_private_host", return_value=False):
+            result = url_reader.invoke({"url": "https://unreachable.example"})
 
     assert result["text"] == ""
     assert result["error"] is not None
@@ -240,6 +244,8 @@ def test_url_reader_truncates_large_page():
     html = "<html><body><p>" + ("word " * 10_000) + "</p></body></html>"
     mock_response = MagicMock()
     mock_response.text = html
+    mock_response.content = html.encode()
+    mock_response.headers = {"content-type": "text/html"}
     mock_response.raise_for_status = MagicMock()
     mock_client = MagicMock()
     mock_client.__enter__ = MagicMock(return_value=mock_client)
@@ -247,7 +253,87 @@ def test_url_reader_truncates_large_page():
     mock_client.get.return_value = mock_response
 
     with patch("app.agents.tools.url_reader.httpx.Client", return_value=mock_client):
-        result = url_reader.invoke({"url": "https://bigpage.com"})
+        with patch("app.agents.tools.url_reader._is_private_host", return_value=False):
+            result = url_reader.invoke({"url": "https://bigpage.com"})
 
     assert result["error"] is None
     assert len(result["text"]) <= ur_module._MAX_CHARS
+
+
+# ── URLReader SSRF protection ───────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "ftp://example.com/file",
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+        "",
+    ],
+)
+def test_url_reader_blocks_invalid_schemes(bad_url):
+    result = url_reader.invoke({"url": bad_url})
+    assert result["text"] == ""
+    assert result["error"] is not None
+
+
+@pytest.mark.parametrize(
+    "private_url",
+    [
+        "http://localhost/admin",
+        "http://127.0.0.1/secret",
+        "http://169.254.169.254/latest/meta-data/",  # AWS metadata endpoint
+        "http://192.168.1.1/",
+        "http://10.0.0.1/internal",
+        "http://172.16.0.1/vpn",
+    ],
+)
+def test_url_reader_blocks_private_hosts(private_url):
+    """SSRF protection: private and reserved addresses must be rejected."""
+    result = url_reader.invoke({"url": private_url})
+    assert result["text"] == ""
+    assert result["error"] is not None
+    assert "private" in result["error"].lower() or "reserved" in result["error"].lower()
+
+
+def test_url_reader_blocks_unsupported_content_type():
+    mock_response = MagicMock()
+    mock_response.text = "binary data"
+    mock_response.content = b"binary data"
+    mock_response.headers = {"content-type": "application/octet-stream"}
+    mock_response.raise_for_status = MagicMock()
+    mock_client = MagicMock()
+    mock_client.__enter__ = MagicMock(return_value=mock_client)
+    mock_client.__exit__ = MagicMock(return_value=False)
+    mock_client.get.return_value = mock_response
+
+    with patch("app.agents.tools.url_reader.httpx.Client", return_value=mock_client):
+        with patch("app.agents.tools.url_reader._is_private_host", return_value=False):
+            result = url_reader.invoke({"url": "https://example.com/file.bin"})
+
+    assert result["text"] == ""
+    assert result["error"] is not None
+    assert "content-type" in result["error"].lower()
+
+
+def test_url_reader_blocks_oversized_response():
+    import app.agents.tools.url_reader as ur_module
+
+    mock_response = MagicMock()
+    mock_response.text = "x" * 10
+    mock_response.content = b"x" * (ur_module._MAX_RESPONSE_BYTES + 1)
+    mock_response.headers = {"content-type": "text/html"}
+    mock_response.raise_for_status = MagicMock()
+    mock_client = MagicMock()
+    mock_client.__enter__ = MagicMock(return_value=mock_client)
+    mock_client.__exit__ = MagicMock(return_value=False)
+    mock_client.get.return_value = mock_response
+
+    with patch("app.agents.tools.url_reader.httpx.Client", return_value=mock_client):
+        with patch("app.agents.tools.url_reader._is_private_host", return_value=False):
+            result = url_reader.invoke({"url": "https://example.com/huge"})
+
+    assert result["text"] == ""
+    assert result["error"] is not None
+    assert "too large" in result["error"].lower()

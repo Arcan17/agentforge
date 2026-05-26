@@ -48,7 +48,7 @@ A task description becomes a structured research report in minutes — decompose
 | **Next.js dashboard** | Live task timeline, approval panel, audit tabs, report renderer, export buttons |
 | **CORS + SSE auth** | `?api_key=` query-param fallback so `EventSource` works with auth enabled |
 | **Retry logic** | `tenacity` — 3 attempts, exponential back-off 1–8 s |
-| **130 tests** | Unit + integration, zero real LLM calls, SQLite in CI |
+| **122 tests** | Unit + integration, zero real LLM calls, SQLite in CI |
 
 ---
 
@@ -420,13 +420,34 @@ agentforge/
 │   ├── src/components/        ← StatusBadge, TaskTimeline, ApprovalPanel, AuditTabs…
 │   └── src/lib/               ← Typed API client + utils
 ├── alembic/                   ← Database migrations (003 versions)
-├── tests/                     ← 130 tests
+├── tests/                     ← 118 tests
 ├── scripts/demo.py            ← End-to-end demo
 └── data/                      ← Sample task files
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full graph diagram and design decisions.
 See [DEPLOY.md](DEPLOY.md) for step-by-step Railway deployment instructions.
+
+---
+
+## Current limitation
+
+The demo uses LangGraph `MemorySaver` as the graph checkpointer. This is suitable for local and demo execution but means that if a Celery worker is restarted while a task is paused at the human-in-the-loop gate, the in-flight graph state is lost and the task must be resubmitted.
+
+A production deployment should use a persistent checkpointer backed by PostgreSQL or Redis so interrupted human-in-the-loop runs survive worker restarts without losing intermediate agent outputs.
+
+---
+
+## Production hardening roadmap
+
+- Persistent LangGraph checkpointer (PostgreSQL or Redis) for HITL crash recovery
+- SSRF protection for `url_reader`: block private IP ranges, cloud metadata endpoints, and non-HTTP schemes
+- Domain allowlist and maximum response size enforcement for web fetches
+- Per-task LLM budget cap and configurable spend limits
+- Source quality scoring and citation validation in the Researcher node
+- Queue priority levels and per-tenant concurrency controls
+- Observability with OpenTelemetry traces and Prometheus metrics
+- Managed cloud deployment with auto-scaling Celery workers
 
 ---
 
