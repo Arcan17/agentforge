@@ -206,6 +206,7 @@ def test_url_reader_success():
     mock_response.text = html
     mock_response.content = html.encode()
     mock_response.headers = {"content-type": "text/html; charset=utf-8"}
+    mock_response.is_redirect = False
     mock_response.raise_for_status = MagicMock()
 
     mock_client = MagicMock()
@@ -246,6 +247,7 @@ def test_url_reader_truncates_large_page():
     mock_response.text = html
     mock_response.content = html.encode()
     mock_response.headers = {"content-type": "text/html"}
+    mock_response.is_redirect = False
     mock_response.raise_for_status = MagicMock()
     mock_client = MagicMock()
     mock_client.__enter__ = MagicMock(return_value=mock_client)
@@ -302,6 +304,7 @@ def test_url_reader_blocks_unsupported_content_type():
     mock_response.text = "binary data"
     mock_response.content = b"binary data"
     mock_response.headers = {"content-type": "application/octet-stream"}
+    mock_response.is_redirect = False
     mock_response.raise_for_status = MagicMock()
     mock_client = MagicMock()
     mock_client.__enter__ = MagicMock(return_value=mock_client)
@@ -317,6 +320,29 @@ def test_url_reader_blocks_unsupported_content_type():
     assert "content-type" in result["error"].lower()
 
 
+def test_url_reader_blocks_redirect_to_private_ip():
+    """SSRF via open redirect: public URL redirects to private address must be blocked."""
+    import app.agents.tools.url_reader as ur_module
+
+    mock_redirect = MagicMock()
+    mock_redirect.is_redirect = True
+    mock_redirect.headers = {"location": "http://169.254.169.254/latest/meta-data/"}
+    mock_redirect.raise_for_status = MagicMock()
+
+    mock_client = MagicMock()
+    mock_client.__enter__ = MagicMock(return_value=mock_client)
+    mock_client.__exit__ = MagicMock(return_value=False)
+    mock_client.get.return_value = mock_redirect
+
+    with patch("app.agents.tools.url_reader.httpx.Client", return_value=mock_client):
+        with patch("app.agents.tools.url_reader._is_private_host", side_effect=[False, True]):
+            result = url_reader.invoke({"url": "https://open-redirect.example.com/go"})
+
+    assert result["text"] == ""
+    assert result["error"] is not None
+    assert "redirect blocked" in result["error"].lower()
+
+
 def test_url_reader_blocks_oversized_response():
     import app.agents.tools.url_reader as ur_module
 
@@ -324,6 +350,7 @@ def test_url_reader_blocks_oversized_response():
     mock_response.text = "x" * 10
     mock_response.content = b"x" * (ur_module._MAX_RESPONSE_BYTES + 1)
     mock_response.headers = {"content-type": "text/html"}
+    mock_response.is_redirect = False
     mock_response.raise_for_status = MagicMock()
     mock_client = MagicMock()
     mock_client.__enter__ = MagicMock(return_value=mock_client)

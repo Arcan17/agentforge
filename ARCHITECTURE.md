@@ -200,7 +200,7 @@ agentforge/
 │   ├── models/                ← SQLAlchemy ORM (task_run, agent_step, agent_event)
 │   └── services/              ← task_service, stream_service, metrics_service
 ├── alembic/                   ← DB migrations
-├── tests/                     ← 122 pytest tests
+├── tests/                     ← pytest suite
 ├── scripts/demo.py            ← CLI demo
 └── data/                      ← Sample task files
 ```

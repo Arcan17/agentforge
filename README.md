@@ -48,7 +48,7 @@ A task description becomes a structured research report in minutes — decompose
 | **Next.js dashboard** | Live task timeline, approval panel, audit tabs, report renderer, export buttons |
 | **CORS + SSE auth** | `?api_key=` query-param fallback so `EventSource` works with auth enabled |
 | **Retry logic** | `tenacity` — 3 attempts, exponential back-off 1–8 s |
-| **122 tests** | Unit + integration, zero real LLM calls, SQLite in CI |
+| **123 tests** | Unit + integration, zero real LLM calls, SQLite in CI |
 
 ---
 
@@ -420,7 +420,7 @@ agentforge/
 │   ├── src/components/        ← StatusBadge, TaskTimeline, ApprovalPanel, AuditTabs…
 │   └── src/lib/               ← Typed API client + utils
 ├── alembic/                   ← Database migrations (003 versions)
-├── tests/                     ← 118 tests
+├── tests/                     ← pytest suite
 ├── scripts/demo.py            ← End-to-end demo
 └── data/                      ← Sample task files
 ```

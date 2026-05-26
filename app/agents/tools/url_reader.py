@@ -80,10 +80,27 @@ def url_reader(url: str) -> dict:
     try:
         with httpx.Client(
             timeout=settings.request_timeout_seconds,
-            follow_redirects=True,
+            follow_redirects=False,  # manual redirect handling to prevent SSRF via redirect
             headers={"User-Agent": "Mozilla/5.0 (compatible; AgentForge/1.0)"},
         ) as client:
             response = client.get(url)
+
+            # Follow redirects manually, validating each hop
+            hops = 0
+            while response.is_redirect and hops < 5:
+                redirect_url = response.headers.get("location", "")
+                redirect_error = _validate_url(redirect_url)
+                if redirect_error:
+                    logger.warning(
+                        "url_reader_redirect_blocked",
+                        original_url=url[:80],
+                        redirect_url=redirect_url[:80],
+                        reason=redirect_error,
+                    )
+                    return {"url": url, "title": "", "text": "", "error": f"Redirect blocked: {redirect_error}"}
+                response = client.get(redirect_url)
+                hops += 1
+
             response.raise_for_status()
 
         # Reject non-HTML/text content types
