@@ -1,8 +1,28 @@
 # AgentForge
 
+[![CI](https://github.com/Arcan17/agentforge/actions/workflows/ci.yml/badge.svg)](https://github.com/Arcan17/agentforge/actions/workflows/ci.yml)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-0.2-purple.svg)](https://github.com/langchain-ai/langgraph)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> Production-grade multi-agent AI research pipeline with LangGraph, human-in-the-loop approval, real-time SSE streaming and a Next.js dashboard.
+
 **Production-grade multi-agent research pipeline** built with LangGraph, FastAPI, and PostgreSQL.
 
 A task description becomes a structured research report in minutes — decomposed by a Planner, researched on the web, analysed, critiqued with automatic revision loops, and optionally gated by a human reviewer before the final write.
+
+## What it demonstrates
+
+| Capability | Implementation | Detail |
+|---|---|---|
+| **Multi-agent orchestration** | LangGraph 5-node pipeline | Planner → Researcher → Analyst → Critic → Writer |
+| **Human-in-the-loop** | `interrupt()` + `/approve` endpoint | Pause graph, review, approve/reject/give feedback |
+| **Auto revision loops** | Critic scores 0–1 | Re-runs Analyst up to 3× if quality < 0.75 |
+| **Real-time SSE streaming** | FastAPI + Server-Sent Events | Live agent events pushed to Next.js dashboard |
+| **Dual LLM support** | Anthropic + OpenAI | Switch via env var; zero real calls in CI |
+| **Cost & token tracking** | Per-task metrics | prompt/completion tokens + `estimated_cost_usd` |
+| **Full-stack dashboard** | Next.js + TypeScript | Task timeline, approval panel, audit tabs, report export |
+| **123 automated tests** | pytest + SQLite in CI | Unit + integration, no external API calls |
 
 > **A live public deployment is intentionally not provided** to avoid uncontrolled
 > LLM API usage and cost exposure. The project runs in full with `docker compose up -d`.
